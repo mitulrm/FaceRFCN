@@ -120,7 +120,8 @@ if __name__ == '__main__':
     dataset_val = FashionDataset()
     dataset_val.initDB(5000, start=100000)
     dataset_val.prepare()
-
+	
+	'''
     model = RFCN_Model(mode="training", config=config, model_dir=os.path.join(ROOT_DIR, "logs") )
 
     # This is a hack, bacause the pre-train weights are not fit with dilated ResNet
@@ -135,7 +136,7 @@ if __name__ == '__main__':
         print("No checkpoint founded")
         
     # *** This training schedule is an example. Update to your needs ***
-
+	
     # Training - Stage 1
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
@@ -165,3 +166,4 @@ if __name__ == '__main__':
                 learning_rate=config.LEARNING_RATE,
                 epochs=240,
                 layers='all')
+	'''
