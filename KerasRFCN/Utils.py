@@ -16,6 +16,8 @@ import skimage.color
 import skimage.io
 import urllib.request
 import shutil
+import keras.backend as K
+from keras.callbacks import Callback
 
 ############################################################
 #  Bounding Boxes
@@ -696,3 +698,16 @@ def mold_image(images, config):
 def unmold_image(normalized_images, config):
     """Takes a image normalized with mold() and returns the original."""
     return (normalized_images + config.MEAN_PIXEL).astype(np.uint8)
+'''
+class GradientsCallback(Callback):
+    def on_batch_end(self, batch, logs):
+        weights = self.model.trainable_weights # weight tensors
+        gradients = self.model.optimizer.get_gradients(self.model.total_loss, weights) # gradient tensors
+        input_tensors = self.model.inputs + self.model.sample_weights + self.model.targets + [K.learning_phase()]
+        get_gradients = K.function(inputs=input_tensors, outputs=gradients)
+		
+        inputs = [x, x_off, np.ones(len(x)), y, 0]
+        grads = get_gradients(inputs)
+        with open('gradients.txt','w') as f:
+            f.write('grads')
+'''
