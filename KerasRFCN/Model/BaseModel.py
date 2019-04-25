@@ -23,7 +23,7 @@ class BaseModel(object):
     """docstring for BaseModel"""
     def __init__(self, arg):
         super(BaseModel, self).__init__()
-        self.arg = arg    
+        self.arg = arg
 
     def find_last(self):
         """Finds the last checkpoint file of the last trained model in the
@@ -58,7 +58,7 @@ class BaseModel(object):
         """
         import h5py
         # Keras 2.2 use saving
-		try:
+        try:
             from keras.engine import saving
         except ImportError:
             # Keras before 2.2 used the 'topology' namespace.
@@ -288,7 +288,7 @@ class BaseModel(object):
             validation_data=next(val_generator),
             validation_steps=self.config.VALIDATION_STEPS,
             max_queue_size=100,
-            workers=4,
+            workers=workers,
             use_multiprocessing=True,
         )
         self.epoch = max(self.epoch, epochs)
