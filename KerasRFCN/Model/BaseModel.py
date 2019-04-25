@@ -58,7 +58,7 @@ class BaseModel(object):
         """
         import h5py
         # Keras 2.2 use saving
-		try:
+        try:
             from keras.engine import saving
         except ImportError:
             # Keras before 2.2 used the 'topology' namespace.
@@ -118,13 +118,16 @@ class BaseModel(object):
         self.keras_model._losses = []
         self.keras_model._per_input_losses = {}
         loss_names = ["rpn_class_loss", "rpn_bbox_loss",
-                      "mrcnn_class_loss", "mrcnn_bbox_loss"]
+                    "mrcnn_class_loss", "mrcnn_bbox_loss"]
         for name in loss_names:
             layer = self.keras_model.get_layer(name)
             if layer.output in self.keras_model.losses:
                 continue
+            loss = layer.output
+            if isinstance(loss, list):
+                loss = loss[0]
             self.keras_model.add_loss(
-                tf.reduce_mean(layer.output, keepdims=True))
+                tf.reduce_mean(loss, keepdims=True))
 
         # Add L2 Regularization
         # Skip gamma and beta weights of batch normalization layers.
@@ -143,8 +146,11 @@ class BaseModel(object):
                 continue
             layer = self.keras_model.get_layer(name)
             self.keras_model.metrics_names.append(name)
+            loss = layer.output
+            if isinstance(loss, list):
+                loss = loss[0]          
             self.keras_model.metrics_tensors.append(tf.reduce_mean(
-                layer.output, keepdims=True))
+                loss, keepdims=True))
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
@@ -278,7 +284,8 @@ class BaseModel(object):
             workers = 0
         else:
             workers = max(self.config.BATCH_SIZE // 2, 2)
-
+        print("Workers:",workers)
+        
         self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,
@@ -288,8 +295,8 @@ class BaseModel(object):
             validation_data=next(val_generator),
             validation_steps=self.config.VALIDATION_STEPS,
             max_queue_size=100,
-            workers=4,
-            use_multiprocessing=True,
+            workers=1,
+            use_multiprocessing=False,
         )
         self.epoch = max(self.epoch, epochs)
 
