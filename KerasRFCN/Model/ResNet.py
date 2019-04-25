@@ -21,7 +21,7 @@ class ResNet(object):
         assert architecture in ['resnet50', 'resnet101'], 'architecture must be resnet50 or resnet101!'
         self.architecture = architecture
         self.construct_graph(input_tensor)
-        
+
     def construct_graph(self, input_tensor, stage5=True):
         assert self.input_tensor is not None, "input_tensor can not be none!"
         # Stage 1
@@ -76,7 +76,7 @@ class ResNet(object):
         self.output_layers = [P2, P3, P4, P5, P6]
 
     def conv_block(self, input_tensor, kernel_size, filters, stage, block,
-               strides=(2, 2), use_bias=True):
+                   strides=(2, 2), use_bias=True):
         """conv_block is the block that has a conv layer at shortcut
         # Arguments
             input_tensor: input tensor
@@ -114,7 +114,7 @@ class ResNet(object):
         return x
 
     def identity_block(self, input_tensor, kernel_size, filters, stage, block,
-                   use_bias=True):
+                       use_bias=True):
         """The identity_block is the block that has no conv layer at shortcut
         # Arguments
             input_tensor: input tensor

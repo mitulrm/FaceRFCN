@@ -11,6 +11,7 @@ import keras.backend as K
 #  Loss Functions
 ############################################################
 
+
 def smooth_l1_loss(y_true, y_pred):
     """Implements Smooth-L1 loss.
     y_true and y_pred are typicallly: [N, 4], but could be any shape.
@@ -142,6 +143,7 @@ def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
     loss = K.mean(loss)
     loss = K.reshape(loss, [1, 1])
     return loss
+
 
 def batch_pack_graph(x, counts, num_rows):
     """Picks different number of values from each row
