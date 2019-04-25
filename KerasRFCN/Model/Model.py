@@ -3,29 +3,29 @@ Keras RFCN
 Copyright (c) 2018
 Licensed under the MIT License (see LICENSE for details)
 Written by parap1uie-s@github.com
-"""
 
-'''
 This is Main class of RFCN Model
 Contain the model's framework and call the backbone
-'''
-
-from KerasRFCN.Model.ResNet import ResNet
-from KerasRFCN.Model.ResNet_dilated import ResNet_dilated
-from KerasRFCN.Model.BaseModel import BaseModel
-import KerasRFCN.Utils
-import KerasRFCN.Losses
+"""
 
 import keras.layers as KL
 import keras.engine as KE
 import tensorflow as tf
 import numpy as np
-import keras
 import keras.backend as K
 import keras.models as KM
+import KerasRFCN.Utils
+import KerasRFCN.Losses
+
+
+from KerasRFCN.Model.ResNet import ResNet
+from KerasRFCN.Model.ResNet_dilated import ResNet_dilated
+from KerasRFCN.Model.BaseModel import BaseModel
+
 
 class RFCN_Model(BaseModel):
     """docstring for RFCN_Model"""
+
     def __init__(self, mode, config, model_dir):
         """
         mode: Either "training" or "inference"
@@ -82,9 +82,8 @@ class RFCN_Model(BaseModel):
         rpn_feature_maps = [P2, P3, P4, P5, P6]
         mrcnn_feature_maps = [P2, P3, P4, P5]
 
-        ### RPN ###
-        rpn = self.build_rpn_model(config.RPN_ANCHOR_STRIDE,
-                              len(config.RPN_ANCHOR_RATIOS), 256)
+        # RPN
+        rpn = self.build_rpn_model(config.RPN_ANCHOR_STRIDE, len(config.RPN_ANCHOR_RATIOS), 256)
         # Loop through pyramid layers
         layer_outputs = []  # list of lists
         for p in rpn_feature_maps:
@@ -101,23 +100,27 @@ class RFCN_Model(BaseModel):
         rpn_class_logits, rpn_class, rpn_bbox = outputs
 
         self.anchors = KerasRFCN.Utils.generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
-                                              config.RPN_ANCHOR_RATIOS,
-                                              config.BACKBONE_SHAPES,
-                                              config.BACKBONE_STRIDES,
-                                              config.RPN_ANCHOR_STRIDE)
+                                                                config.RPN_ANCHOR_RATIOS,
+                                                                config.BACKBONE_SHAPES,
+                                                                config.BACKBONE_STRIDES,
+                                                                config.RPN_ANCHOR_STRIDE)
         # window size K and total classed num C
         # Example: For coco, C = 80+1
         scoreMapSize = config.K * config.K
         ScoreMaps_classify = []
         for feature_map_count, feature_map in enumerate(mrcnn_feature_maps):
             # [W * H * class_num] * k^2
-            ScoreMap = KL.Conv2D(config.C * scoreMapSize, kernel_size=(1,1), name="score_map_class_{}".format(feature_map_count), padding='valid')(feature_map)
+            ScoreMap = KL.Conv2D(config.C * scoreMapSize, kernel_size=(1, 1),
+                                 name="score_map_class_{}".format(feature_map_count),
+                                 padding='valid')(feature_map)
             ScoreMaps_classify.append(ScoreMap)
 
         ScoreMaps_regr = []
         for feature_map_count, feature_map in enumerate(mrcnn_feature_maps):
             # [W * H * 4] * k^2 ==> 4 = (x,y,w,h)
-            ScoreMap = KL.Conv2D(4 * scoreMapSize, kernel_size=(1,1), name="score_map_regr_{}".format(feature_map_count), padding='valid')(feature_map)
+            ScoreMap = KL.Conv2D(4 * scoreMapSize, kernel_size=(1, 1),
+                                 name="score_map_regr_{}".format(feature_map_count),
+                                 padding='valid')(feature_map)
             ScoreMaps_regr.append(ScoreMap)
 
         # Generate proposals
@@ -145,17 +148,33 @@ class RFCN_Model(BaseModel):
                     rpn_rois, input_gt_class_ids, gt_boxes])
 
             # size = [batch, num_rois, class_num]
-            classify_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, config.C, config.K, config.POOL_SIZE, config.BATCH_SIZE, config.IMAGE_SHAPE, name="classify_vote")([rois] + ScoreMaps_classify)
-            classify_output = KL.TimeDistributed(KL.Activation('softmax'),name="classify_output")(classify_vote)
+            classify_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, config.C, config.K, config.POOL_SIZE,
+                                        config.BATCH_SIZE, config.IMAGE_SHAPE,
+                                        name="classify_vote")([rois] + ScoreMaps_classify)
+            classify_weighted_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
+                                                     config.POOL_SIZE,
+                                                     name="classify_weighted_vote")(classify_vote)
+            # Shape of classify_output: (config.TRAIN_ROIS_PER_IMAGE, channels) -> (200, 2)
+            classify_output = KL.TimeDistributed(KL.Activation('softmax'),
+                                                 name="classify_output")(classify_weighted_vote)
 
             # 4 k^2 rather than 4k^2*C
-            regr_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, 4, config.K, config.POOL_SIZE, config.BATCH_SIZE, config.IMAGE_SHAPE, name="regr_vote")([rois] + ScoreMaps_regr)
-            regr_output = KL.TimeDistributed(KL.Activation('linear'),name="regr_output")(regr_vote)
+            regr_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, 4, config.K, config.POOL_SIZE,
+                                    config.BATCH_SIZE, config.IMAGE_SHAPE,
+                                    name="regr_vote")([rois] + ScoreMaps_regr)
+            regr_weighted_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
+                                                 config.POOL_SIZE,
+                                                 name="regr_weighted_regr")(regr_vote)
+            regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_weighted_vote)
 
-            rpn_class_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_class_loss_graph(*x), name="rpn_class_loss")(
+            rpn_class_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_class_loss_graph(*x),
+                                       name="rpn_class_loss")(
                 [input_rpn_match, rpn_class_logits])
-            rpn_bbox_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_bbox_loss_graph(config, *x), name="rpn_bbox_loss")(
+            rpn_bbox_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_bbox_loss_graph(config, *x),
+                                      name="rpn_bbox_loss")(
                 [input_rpn_bbox, input_rpn_match, rpn_bbox])
+                                   name="mrcnn_class_loss")(
+                                  name="mrcnn_bbox_loss")(
 
             if config.OHEM:
                 class_loss, hard_example_indices = KL.Lambda(lambda x: KerasRFCN.Losses.mrcnn_class_ohem_loss_graph(*x), name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
@@ -173,17 +192,21 @@ class RFCN_Model(BaseModel):
                        rpn_rois, rpn_class_loss, rpn_bbox_loss, class_loss, bbox_loss]
 
             keras_model = KM.Model(inputs, outputs, name='rfcn_train')
-        else: # inference
-
+        else:
+            # inference
             # Network Heads
             # Proposal classifier and BBox regressor heads
             # size = [batch, num_rois, class_num]
-            classify_vote = VotePooling(proposal_count, config.C, config.K, config.POOL_SIZE, config.BATCH_SIZE, config.IMAGE_SHAPE, name="classify_vote")([rpn_rois] + ScoreMaps_classify)
-            classify_output = KL.TimeDistributed(KL.Activation('softmax'),name="classify_output")(classify_vote)
+            classify_vote = VotePooling(proposal_count, config.C, config.K, config.POOL_SIZE,
+                                        config.BATCH_SIZE, config.IMAGE_SHAPE,
+                                        name="classify_vote")([rpn_rois] + ScoreMaps_classify)
+            classify_output = KL.TimeDistributed(KL.Activation('softmax'),
+                                                 name="classify_output")(classify_vote)
 
             # 4 k^2 rather than 4k^2*C
-            regr_vote = VotePooling(proposal_count, 4, config.K, config.POOL_SIZE, config.BATCH_SIZE, config.IMAGE_SHAPE, name="regr_vote")([rpn_rois] + ScoreMaps_regr)
-            regr_output = KL.TimeDistributed(KL.Activation('linear'),name="regr_output")(regr_vote)
+            regr_vote = VotePooling(proposal_count, 4, config.K, config.POOL_SIZE, config.BATCH_SIZE,
+                                    config.IMAGE_SHAPE, name="regr_vote")([rpn_rois] + ScoreMaps_regr)
+            regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)
 
             # Detections
             # output is [batch, num_detections, (y1, x1, y2, x2, score)] in image coordinates
@@ -191,10 +214,10 @@ class RFCN_Model(BaseModel):
                 [rpn_rois, classify_output, regr_output, input_image_meta])
 
             keras_model = KM.Model([input_image, input_image_meta],
-                             [detections, classify_output, regr_output, rpn_rois, rpn_class, rpn_bbox],
-                             name='rfcn_inference')
+                                   [detections, classify_output, regr_output, rpn_rois, rpn_class, rpn_bbox],
+                                   name='rfcn_inference')
         return keras_model
-            
+
     def build_rpn_model(self, anchor_stride, anchors_per_location, depth):
         """Builds a Keras model of the Region Proposal Network.
         It wraps the RPN graph so it can be used multiple times with shared
@@ -345,27 +368,27 @@ class ProposalLayer(KE.Layer):
         ix = tf.nn.top_k(scores, pre_nms_limit, sorted=True,
                          name="top_anchors").indices
         scores = KerasRFCN.Utils.batch_slice([scores, ix], lambda x, y: tf.gather(x, y),
-                                   self.config.IMAGES_PER_GPU)
+                                             self.config.IMAGES_PER_GPU)
         deltas = KerasRFCN.Utils.batch_slice([deltas, ix], lambda x, y: tf.gather(x, y),
-                                   self.config.IMAGES_PER_GPU)
+                                             self.config.IMAGES_PER_GPU)
         anchors = KerasRFCN.Utils.batch_slice(ix, lambda x: tf.gather(anchors, x),
-                                    self.config.IMAGES_PER_GPU,
-                                    names=["pre_nms_anchors"])
+                                              self.config.IMAGES_PER_GPU,
+                                              names=["pre_nms_anchors"])
 
         # Apply deltas to anchors to get refined anchors.
         # [batch, N, (y1, x1, y2, x2)]
         boxes = KerasRFCN.Utils.batch_slice([anchors, deltas],
-                                  lambda x, y: apply_box_deltas_graph(x, y),
-                                  self.config.IMAGES_PER_GPU,
-                                  names=["refined_anchors"])
+                                            lambda x, y: apply_box_deltas_graph(x, y),
+                                            self.config.IMAGES_PER_GPU,
+                                            names=["refined_anchors"])
 
         # Clip to image boundaries. [batch, N, (y1, x1, y2, x2)]
         height, width = self.config.IMAGE_SHAPE[:2]
         window = np.array([0, 0, height, width]).astype(np.float32)
         boxes = KerasRFCN.Utils.batch_slice(boxes,
-                                  lambda x: clip_boxes_graph(x, window),
-                                  self.config.IMAGES_PER_GPU,
-                                  names=["refined_anchors_clipped"])
+                                            lambda x: clip_boxes_graph(x, window),
+                                            self.config.IMAGES_PER_GPU,
+                                            names=["refined_anchors_clipped"])
 
         # Filter out small boxes
         # According to Xinlei Chen's paper, this reduces detection accuracy
@@ -385,7 +408,7 @@ class ProposalLayer(KE.Layer):
             proposals = tf.pad(proposals, [(0, padding), (0, 0)])
             return proposals
         proposals = KerasRFCN.Utils.batch_slice([normalized_boxes, scores], nms,
-                                      self.config.IMAGES_PER_GPU)
+                                                self.config.IMAGES_PER_GPU)
         return proposals
 
     def compute_output_shape(self, input_shape):
@@ -394,6 +417,7 @@ class ProposalLayer(KE.Layer):
 ############################################################
 #  Detection Target Layer
 ############################################################
+
 
 def overlaps_graph(boxes1, boxes2):
     """Computes IoU overlaps between two sets of boxes.
@@ -518,6 +542,7 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, config):
 
     return rois, roi_gt_class_ids, deltas
 
+
 def trim_zeros_graph(boxes, name=None):
     """Often boxes are represented with matricies of shape [N, 4] and
     are padded with zeros. This removes zero boxes.
@@ -528,6 +553,7 @@ def trim_zeros_graph(boxes, name=None):
     non_zeros = tf.cast(tf.reduce_sum(tf.abs(boxes), axis=1), tf.bool)
     boxes = tf.boolean_mask(boxes, non_zeros, name=name)
     return boxes, non_zeros
+
 
 class DetectionTargetLayer(KE.Layer):
     """Subsamples proposals and generates target box refinment, class_ids for each.
@@ -580,11 +606,37 @@ class DetectionTargetLayer(KE.Layer):
 #  ROI pooling on Muti Bins
 ############################################################
 
+
 def log2_graph(x):
     """Implementatin of Log2. TF doesn't have a native implemenation."""
     return tf.log(x) / tf.log(2.0)
 
+
+class WeightedAverage(KE.Layer):
+
+    def __init__(self, num_rois, channel_num, pool_shape, **kwargs):
+        super(WeightedAverage, self).__init__(**kwargs)
+        self.num_rois = num_rois
+        self.pool_shape = pool_shape
+        self.channel_num = channel_num
+
+    def call(self, feature):
+        pool = []
+        feature = tf.squeeze(feature, 0)
+        for ix in range(self.num_rois):
+            total = tf.reduce_sum(feature[ix], 1)
+            avg = total / (self.pool_shape * self.pool_shape)
+            pool.append(avg)
+        pool = tf.convert_to_tensor(pool, tf.float32)
+        pool = tf.expand_dims(pool, 0)
+        return pool
+
+    def compute_output_shape(self, input_shape):
+        return None, self.num_rois, self.channel_num
+
+
 class VotePooling(KE.Layer):
+
     def __init__(self, num_rois, channel_num, k, pool_shape, batch_size, image_shape, **kwargs):
         super(VotePooling, self).__init__(**kwargs)
         self.channel_num = channel_num
@@ -644,22 +696,27 @@ class VotePooling(KE.Layer):
 
         # position-sensitive ROI pooling + classify
         score_map_bins = []
-        for channel_step in range(self.k*self.k):
-            bin_x = K.variable( int(channel_step % self.k) * self.pool_shape, dtype='int32')
-            bin_y = K.variable( int(channel_step / self.k) * self.pool_shape, dtype='int32')
-            channel_indices = K.variable(list(range(channel_step*self.channel_num, (channel_step+1)*self.channel_num)), dtype='int32')
+        for channel_step in range(self.k * self.k):
+            bin_x = K.variable(int(channel_step % self.k) * self.pool_shape, dtype='int32')
+            bin_y = K.variable(int(channel_step / self.k) * self.pool_shape, dtype='int32')
+            channel_indices = K.variable(list(range(channel_step * self.channel_num,
+                                                    (channel_step + 1) * self.channel_num)), dtype='int32')
             croped = tf.image.crop_to_bounding_box(
-                tf.gather( pooled, indices=channel_indices, axis=-1), bin_y, bin_x, self.pool_shape, self.pool_shape)
+                tf.gather(pooled, indices=channel_indices, axis=-1),
+                bin_y, bin_x, self.pool_shape, self.pool_shape)
+            croped_mean = tf.reshape(croped, [self.channel_num, -1])
             # [pool_shape, pool_shape, channel_num] ==> [1,1,channel_num] ==> [1, channel_num]
-            croped_mean = K.pool2d(croped, (self.pool_shape, self.pool_shape), strides=(1, 1), padding='valid', data_format="channels_last", pool_mode='avg')
-            # [batch * num_rois, 1,1,channel_num] ==> [batch * num_rois, 1, channel_num] 
-            croped_mean = K.squeeze(croped_mean, axis=1)
+            # croped_mean = K.pool2d(croped, (self.pool_shape, self.pool_shape), strides=(1, 1),
+            #                        padding='valid', data_format="channels_last", pool_mode='avg')
+            # [batch * num_rois, 1,1,channel_num] ==> [batch * num_rois, 1, channel_num]
+            # croped_mean = K.squeeze(croped_mean, axis=1)
             score_map_bins.append(croped_mean)
         # [batch * num_rois, k^2, channel_num]
         score_map_bins = tf.concat(score_map_bins, axis=1)
         # [batch * num_rois, k*k, channel_num] ==> [batch * num_rois,channel_num]
         # because "keepdims=False", the axis 1 will not keep. else will be [batch * num_rois,1,channel_num]
-        pooled = K.sum(score_map_bins, axis=1)
+        # pooled = K.sum(score_map_bins, axis=1)
+        pooled = score_map_bins
 
         # Pack box_to_level mapping into one array and add another
         # column representing the order of pooled boxes
@@ -679,15 +736,16 @@ class VotePooling(KE.Layer):
 
         # Re-add the batch dimension
         pooled = tf.expand_dims(pooled, 0)
-        
+
         return pooled
 
     def compute_output_shape(self, input_shape):
-        return None, self.num_rois, self.channel_num
+        return None, self.num_rois, self.pool_shape * self.pool_shape, self.channel_num
 
 ############################################################
 #  Detection Layer
 ############################################################
+
 
 def clip_to_window(window, boxes):
     """
@@ -704,7 +762,7 @@ def clip_to_window(window, boxes):
 def refine_detections_graph(rois, probs, deltas, window, config):
     """Refine classified proposals and filter overlaps and return final
     detections.
-    
+
     Inputs:
         rois: [N, (y1, x1, y2, x2)] in normalized coordinates
         probs: [N, num_classes]. Class probabilities.
@@ -752,7 +810,7 @@ def refine_detections_graph(rois, probs, deltas, window, config):
     # 1. Prepare variables
     pre_nms_class_ids = tf.gather(class_ids, keep)
     pre_nms_scores = tf.gather(class_scores, keep)
-    pre_nms_rois = tf.gather(refined_rois,   keep)
+    pre_nms_rois = tf.gather(refined_rois, keep)
     unique_pre_nms_class_ids = tf.unique(pre_nms_class_ids)[0]
 
     def nms_keep_map(class_id):
@@ -761,10 +819,10 @@ def refine_detections_graph(rois, probs, deltas, window, config):
         ixs = tf.where(tf.equal(pre_nms_class_ids, class_id))[:, 0]
         # Apply NMS
         class_keep = tf.image.non_max_suppression(
-                tf.to_float(tf.gather(pre_nms_rois, ixs)),
-                tf.gather(pre_nms_scores, ixs),
-                max_output_size=config.DETECTION_MAX_INSTANCES,
-                iou_threshold=config.DETECTION_NMS_THRESHOLD)
+            tf.to_float(tf.gather(pre_nms_rois, ixs)),
+            tf.gather(pre_nms_scores, ixs),
+            max_output_size=config.DETECTION_MAX_INSTANCES,
+            iou_threshold=config.DETECTION_NMS_THRESHOLD)
         # Map indicies
         class_keep = tf.gather(keep, tf.gather(ixs, class_keep))
         # Pad with -1 so returned tensors have the same shape
@@ -797,13 +855,13 @@ def refine_detections_graph(rois, probs, deltas, window, config):
     detections = tf.concat([
         tf.to_float(tf.gather(refined_rois, keep)),
         tf.to_float(tf.gather(class_ids, keep))[..., tf.newaxis],
-        tf.gather(class_scores, keep)[..., tf.newaxis]
-        ], axis=1)
+        tf.gather(class_scores, keep)[..., tf.newaxis]], axis=1)
 
     # Pad with zeros if detections < DETECTION_MAX_INSTANCES
     gap = config.DETECTION_MAX_INSTANCES - tf.shape(detections)[0]
     detections = tf.pad(detections, [(0, gap), (0, 0)], "CONSTANT")
     return detections
+
 
 def parse_image_meta_graph(meta):
     """Parses a tensor that contains image attributes to its components.
@@ -816,6 +874,7 @@ def parse_image_meta_graph(meta):
     window = meta[:, 4:8]
     active_class_ids = meta[:, 8:]
     return [image_id, image_shape, window, active_class_ids]
+
 
 class DetectionLayer(KE.Layer):
     """Takes classified proposal boxes and their bounding box deltas and

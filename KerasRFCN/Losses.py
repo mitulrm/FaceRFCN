@@ -140,6 +140,7 @@ def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
     loss = K.reshape(loss, [1, 1])
     return loss
 
+<<<<<<< HEAD
 def mrcnn_class_ohem_loss_graph(target_class_ids, pred_class_logits,
                            active_class_ids, OHEM_HARD_EXAMPLES_SIZE = 256):
     """Loss for the classifier head of Mask RCNN.
@@ -220,6 +221,8 @@ def mrcnn_bbox_ohem_loss_graph(target_bbox, target_class_ids, pred_bbox, hard_ex
     loss = K.mean(loss)
     loss = K.reshape(loss, [1, 1])
     return loss
+=======
+>>>>>>> e13fcab6ca5f592daff2ef61b7fd267eaeb134b6
 
 def batch_pack_graph(x, counts, num_rows):
     """Picks different number of values from each row
