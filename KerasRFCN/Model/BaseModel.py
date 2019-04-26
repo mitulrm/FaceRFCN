@@ -3,24 +3,26 @@ Keras RFCN
 Copyright (c) 2018
 Licensed under the MIT License (see LICENSE for details)
 Written by parap1uie-s@github.com
-"""
 
-'''
 This is base class of RFCN Model
 Contain some functions like load_weights、find_last...etc
-'''
+"""
+
 
 import re
 import keras
 import tensorflow as tf
 import datetime
-from KerasRFCN.Data_generator import data_generator
 import os
 import KerasRFCN.Utils
 import numpy as np
 
+from KerasRFCN.Data_generator import data_generator
+
+
 class BaseModel(object):
     """docstring for BaseModel"""
+
     def __init__(self, arg):
         super(BaseModel, self).__init__()
         self.arg = arg
@@ -123,8 +125,11 @@ class BaseModel(object):
             layer = self.keras_model.get_layer(name)
             if layer.output in self.keras_model.losses:
                 continue
+            loss = layer.output
+            if isinstance(loss, list):
+                loss = loss[0]
             self.keras_model.add_loss(
-                tf.reduce_mean(layer.output, keepdims=True))
+                tf.reduce_mean(loss, keepdims=True))
 
         # Add L2 Regularization
         # Skip gamma and beta weights of batch normalization layers.
@@ -143,8 +148,11 @@ class BaseModel(object):
                 continue
             layer = self.keras_model.get_layer(name)
             self.keras_model.metrics_names.append(name)
+            loss = layer.output
+            if isinstance(loss, list):
+                loss = loss[0]
             self.keras_model.metrics_tensors.append(tf.reduce_mean(
-                layer.output, keepdims=True))
+                loss, keepdims=True))
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
@@ -181,7 +189,7 @@ class BaseModel(object):
             # Print trainble layer names
             if trainable and verbose > 0:
                 print("{}{:20}   ({})".format(" " * indent, layer.name,
-                                            layer.__class__.__name__))
+                                              layer.__class__.__name__))
 
     def set_log_dir(self, model_path=None):
         """Sets the model log directory and epoch counter.
@@ -255,14 +263,15 @@ class BaseModel(object):
         val_generator = data_generator(val_dataset, self.config, shuffle=True,
                                        batch_size=self.config.BATCH_SIZE,
                                        augment=False)
-
+        print(type(self))
         # Callbacks
         callbacks = [
             keras.callbacks.TensorBoard(log_dir=self.log_dir,
                                         histogram_freq=0, write_graph=True, write_images=False),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
                                             verbose=0, save_weights_only=True, save_best_only=True),
-            keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.01, patience=10, verbose=1, mode='auto', min_delta=0.001, min_lr=0)
+            keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.01, patience=10,
+                                              verbose=1, mode='auto', min_delta=0.001, min_lr=0)
         ]
 
         # Train
@@ -275,10 +284,10 @@ class BaseModel(object):
         # multiprocessing workers. See discussion here:
         # https://github.com/matterport/Mask_RCNN/issues/13#issuecomment-353124009
         if os.name is 'nt':
-            workers = 0
+            workers = 1
         else:
             workers = max(self.config.BATCH_SIZE // 2, 2)
-
+        print("Workers: {}".format(workers))
         self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,

@@ -176,13 +176,23 @@ class RFCN_Model(BaseModel):
             rpn_bbox_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_bbox_loss_graph(config, *x),
                                       name="rpn_bbox_loss")(
                 [input_rpn_bbox, input_rpn_match, rpn_bbox])
-            class_loss = KL.Lambda(lambda x: KerasRFCN.Losses.mrcnn_class_loss_graph(*x),
-                                   name="mrcnn_class_loss")(
-                [target_class_ids, classify_vote, active_class_ids])
-            bbox_loss = KL.Lambda(lambda x: KerasRFCN.Losses.mrcnn_bbox_loss_graph(*x),
-                                  name="mrcnn_bbox_loss")(
-                [target_bbox, target_class_ids, regr_output])
 
+            if config.OHEM:
+                class_loss, hard_example_indices = KL.Lambda(
+                    lambda x: KerasRFCN.Losses.mrcnn_class_ohem_loss_graph(*x),
+                    name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
+
+                bbox_loss = KL.Lambda(
+                    lambda x: KerasRFCN.Losses.mrcnn_bbox_ohem_loss_graph(*x),
+                    name="mrcnn_bbox_loss")([target_bbox, target_class_ids,
+                                             regr_output, hard_example_indices])
+            else:
+                class_loss = KL.Lambda(
+                    lambda x: KerasRFCN.Losses.mrcnn_class_loss_graph(*x),
+                    name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
+                bbox_loss = KL.Lambda(
+                    lambda x: KerasRFCN.Losses.mrcnn_bbox_loss_graph(*x),
+                    name="mrcnn_bbox_loss")([target_bbox, target_class_ids, regr_output])
             inputs = [input_image, input_image_meta,
                       input_rpn_match, input_rpn_bbox, input_gt_class_ids, input_gt_boxes]
 

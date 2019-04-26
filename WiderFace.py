@@ -60,6 +60,10 @@ class RFCNNConfig(Config):
     MAX_GT_INSTANCES = 1000
     RPN_TRAIN_ANCHORS_PER_IMAGE = 65472
 
+    # To decide to run online hard example mining(OHEM) or not
+    OHEM = True
+    OHEM_HARD_EXAMPLES_SIZE = 256
+
 ############################################################
 #  Dataset
 ############################################################
