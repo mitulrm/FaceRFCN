@@ -23,7 +23,7 @@ class BaseModel(object):
     """docstring for BaseModel"""
     def __init__(self, arg):
         super(BaseModel, self).__init__()
-        self.arg = arg    
+        self.arg = arg
 
     def find_last(self):
         """Finds the last checkpoint file of the last trained model in the
