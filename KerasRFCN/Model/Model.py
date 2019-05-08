@@ -152,7 +152,7 @@ class RFCN_Model(BaseModel):
                                           config.BATCH_SIZE, config.IMAGE_SHAPE,
                                           name="classify_vote")([rois] + ScoreMaps_classify)
             d_classify_vote = KL.TimeDistributed(
-                KL.Dense(config.POOL_SIZE * config.POOL_SIZE))(v_classify_vote)
+                KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'classify_weighted_dense'))(v_classify_vote)
             classify_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
                                             config.POOL_SIZE,
                                             name="classify_weighted_vote")(d_classify_vote)
@@ -164,8 +164,8 @@ class RFCN_Model(BaseModel):
             v_regr_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, 4, config.K, config.POOL_SIZE,
                                       config.BATCH_SIZE, config.IMAGE_SHAPE,
                                       name="regr_vote")([rois] + ScoreMaps_regr)
-            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE))(v_regr_vote)
-            regr_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
+            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'regr_weighted_dense'))(v_regr_vote)
+            regr_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, 4,
                                         config.POOL_SIZE,
                                         name="regr_weighted_regr")(d_regr_vote)
             regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)
@@ -178,6 +178,7 @@ class RFCN_Model(BaseModel):
                 [input_rpn_bbox, input_rpn_match, rpn_bbox])
 
             if config.OHEM:
+                print("Using OHEM Loss")
                 class_loss, hard_example_indices = KL.Lambda(
                     lambda x: KerasRFCN.Losses.mrcnn_class_ohem_loss_graph(*x),
                     name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
@@ -187,6 +188,7 @@ class RFCN_Model(BaseModel):
                     name="mrcnn_bbox_loss")([target_bbox, target_class_ids,
                                              regr_output, hard_example_indices])
             else:
+                print("NOT using OHEM Loss")
                 class_loss = KL.Lambda(
                     lambda x: KerasRFCN.Losses.mrcnn_class_loss_graph(*x),
                     name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
@@ -210,8 +212,8 @@ class RFCN_Model(BaseModel):
                                           config.BATCH_SIZE, config.IMAGE_SHAPE,
                                           name="classify_vote")([rpn_rois] + ScoreMaps_classify)
             d_classify_vote = KL.TimeDistributed(
-                KL.Dense(config.POOL_SIZE * config.POOL_SIZE))(v_classify_vote)
-            classify_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
+                KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'classify_weighted_dense'))(v_classify_vote)
+            classify_vote = WeightedAverage(proposal_count, config.C,
                                             config.POOL_SIZE,
                                             name="classify_weighted_vote")(d_classify_vote)
             classify_output = KL.TimeDistributed(KL.Activation('softmax'),
@@ -220,8 +222,8 @@ class RFCN_Model(BaseModel):
             # 4 k^2 rather than 4k^2*C
             v_regr_vote = VotePooling(proposal_count, 4, config.K, config.POOL_SIZE, config.BATCH_SIZE,
                                       config.IMAGE_SHAPE, name="regr_vote")([rpn_rois] + ScoreMaps_regr)
-            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE))(v_regr_vote)
-            regr_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
+            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'regr_weighted_dense'))(v_regr_vote)
+            regr_vote = WeightedAverage(proposal_count, 4,
                                         config.POOL_SIZE,
                                         name="regr_weighted_regr")(d_regr_vote)
             regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)

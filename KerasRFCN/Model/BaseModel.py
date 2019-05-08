@@ -258,7 +258,7 @@ class BaseModel(object):
             layers = layer_regex[layers]
 
         # Data generators
-        train_generator = data_generator(train_dataset, self.config, shuffle=True,
+        train_generator = data_generator(train_dataset, self.config, shuffle=True, augment = False,
                                          batch_size=self.config.BATCH_SIZE)
         val_generator = data_generator(val_dataset, self.config, shuffle=True,
                                        batch_size=self.config.BATCH_SIZE,
@@ -270,8 +270,8 @@ class BaseModel(object):
                                         histogram_freq=0, write_graph=True, write_images=False),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
                                             verbose=0, save_weights_only=True, save_best_only=True),
-            keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.01, patience=10,
-                                              verbose=1, mode='auto', min_delta=0.001, min_lr=0)
+            keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.05, patience=6,
+                                              verbose=1, mode='auto', min_delta=0.001, min_lr=0.00000001)
         ]
 
         # Train

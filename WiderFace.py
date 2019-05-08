@@ -36,8 +36,8 @@ class RFCNNConfig(Config):
     NUM_CLASSES = C
     # Use small images for faster training. Set the limits of the small side
     # the large side, and that determines the image shape.
-    IMAGE_MIN_DIM = 512
-    IMAGE_MAX_DIM = 512
+    IMAGE_MIN_DIM = 768
+    IMAGE_MAX_DIM = 1024
 
     RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
     # Use smaller anchors because our image and objects are small
@@ -47,23 +47,22 @@ class RFCNNConfig(Config):
     BACKBONE_STRIDES = [4, 8, 16, 32, 64]
     # Reduce training ROIs per image because the images are small and have
     # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
-    TRAIN_ROIS_PER_IMAGE = 200
+    TRAIN_ROIS_PER_IMAGE = 2000
 
     # Use a small epoch since the data is simple
-    STEPS_PER_EPOCH = 1000
+    STEPS_PER_EPOCH = 3000
 
     # use small validation steps since the epoch is small
-    VALIDATION_STEPS = 200
+    VALIDATION_STEPS = 2000
 
     RPN_NMS_THRESHOLD = 0.6
     POOL_SIZE = 7
     MAX_GT_INSTANCES = 1000
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 65472
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 256
 
     # To decide to run online hard example mining(OHEM) or not
     OHEM = True
     OHEM_HARD_EXAMPLES_SIZE = 256
-
 ############################################################
 #  Dataset
 ############################################################
@@ -93,7 +92,7 @@ class WiderFaceDataset(Dataset):
                     imagePath = os.path.join(img_dir, line)
                     imageBoxes = []
                     if not os.path.isfile(imagePath):
-                        print("{} does not exist".format(line))
+                        print("{} does not exist".format(imagePath))
                         continue
                 elif newImage:
                     newImage = False
@@ -190,27 +189,28 @@ if __name__ == '__main__':
     ROOT_DIR = os.getcwd()
     config = RFCNNConfig()
     dataset_train = WiderFaceDataset()
-    dataset_train.initDB(img_dir='D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset/train/images',
-                         annotation_file='D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset/wider_face_split/wider_face_train_bbx_gt.txt')
+    dataset_train.initDB(img_dir='/home/mitulmodi15/WIDERFACE_Dataset/WIDER_train/images',
+                         annotation_file='/home/mitulmodi15/WIDERFACE_Dataset/wider_face_split/wider_face_train_bbx_gt.txt')
     dataset_train.prepare()
 
     dataset_val = WiderFaceDataset()
-    dataset_val.initDB(img_dir='D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset/val/WIDER_val/images',
-                       annotation_file='D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset/wider_face_split/wider_face_val_bbx_gt.txt')
+    dataset_val.initDB(img_dir='/home/mitulmodi15/WIDERFACE_Dataset/WIDER_val/images',
+                       annotation_file='/home/mitulmodi15/WIDERFACE_Dataset/wider_face_split/wider_face_val_bbx_gt.txt')
     dataset_val.prepare()
     print("Dataset prepared!")
-    anchors = generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
-                                       config.RPN_ANCHOR_RATIOS,
-                                       config.BACKBONE_SHAPES,
-                                       config.BACKBONE_STRIDES,
-                                       config.RPN_ANCHOR_STRIDE)
-    image, image_meta, gt_class_ids, gt_boxes = load_image_gt(dataset_train, config, 10, augment=False)
-    rpn_match, rpn_bbox = build_rpn_targets(image.shape, anchors, gt_class_ids, gt_boxes, config)
-    # embed()
+    #anchors = generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
+    #                                   config.RPN_ANCHOR_RATIOS,
+    #                                   config.BACKBONE_SHAPES,
+    #                                   config.BACKBONE_STRIDES,
+    #                                   config.RPN_ANCHOR_STRIDE)
+    #image, image_meta, gt_class_ids, gt_boxes = load_image_gt(dataset_train, config, 10, augment=False)
+    #rpn_match, rpn_bbox = build_rpn_targets(image.shape, anchors, gt_class_ids, gt_boxes, config)
+    #embed()
+    #config.OHEM = False
+    #config.TRAIN_ROIS_PER_IMAGE = 300
     model = RFCN_Model(mode="training", config=config, model_dir=os.path.join(ROOT_DIR, "logs"))
-    model.keras_model.load_weights("resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5",
+    model.keras_model.load_weights("resnet101_weights_tf_dim_ordering_tf_kernels_notop.h5",
                                    by_name=True, skip_mismatch=True)
-    # model.keras_model.load_weights("Keras-RFCN_widerface_0001.h5", by_name=True, skip_mismatch=True)
 
     try:
         model_path = model.find_last()[1]
@@ -220,6 +220,6 @@ if __name__ == '__main__':
         print(e)
         print("No checkpoint founded")
 
-    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=20, layers='heads')
-    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=20, layers='4+')
+    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=40, layers='heads')
+    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=30, layers='4+')
     model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')
