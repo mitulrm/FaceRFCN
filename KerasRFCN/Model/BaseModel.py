@@ -19,6 +19,8 @@ import numpy as np
 
 from KerasRFCN.Data_generator import data_generator
 
+import keras.backend as K
+from collections import OrderedDict
 
 class BaseModel(object):
     """docstring for BaseModel"""
@@ -246,6 +248,7 @@ class BaseModel(object):
         # Pre-defined layer regular expressions
         layer_regex = {
             # all layers but the backbone
+            "rpn": r"(res5.*)|(bn5.*)|(res6.*)|(bn6.*)|(rpn\_.*)",
             "heads": r"(mrcnn\_.*)|(rpn\_.*)|(score_map\_.*)|(regr\_.*)|(classify\_.*)",
             # From a specific Resnet stage and up
             "3+": r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(res6.*)|(bn6.*)|(mrcnn\_.*)|(rpn\_.*)|(score_map\_.*)|(regr\_.*)|(classify\_.*)",
@@ -269,7 +272,7 @@ class BaseModel(object):
             keras.callbacks.TensorBoard(log_dir=self.log_dir,
                                         histogram_freq=0, write_graph=True, write_images=False),
             keras.callbacks.ModelCheckpoint(self.checkpoint_path,
-                                            verbose=0, save_weights_only=True, save_best_only=True),
+                                            verbose=0, save_weights_only=True, save_best_only=False),
             keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.05, patience=6,
                                               verbose=1, mode='auto', min_delta=0.001, min_lr=0.00000001)
         ]
@@ -424,3 +427,85 @@ class BaseModel(object):
             N = class_ids.shape[0]
 
         return boxes, class_ids, scores
+
+
+    def ancestor(self, tensor, name, checked=None):
+        """Finds the ancestor of a TF tensor in the computation graph.
+        tensor: TensorFlow symbolic tensor.
+        name: Name of ancestor tensor to find
+        checked: For internal use. A list of tensors that were already
+        searched to avoid loops in traversing the graph.
+        """
+        checked = checked if checked is not None else []
+        # Put a limit on how deep we go to avoid very long loops
+        if len(checked) > 500:
+            return None
+        # Convert name to a regex and allow matching a number prefix
+        # because Keras adds them automatically
+        if isinstance(name, str):
+            name = re.compile(name.replace("/", r"(\_\d+)*/"))
+
+         parents = tensor.op.inputs
+         for p in parents:
+            if p in checked:
+                continue
+            if bool(re.fullmatch(name, p.name)):
+                return p
+            checked.append(p)
+            a = self.ancestor(p, name, checked)
+            if a is not None:
+                return a
+        return None
+
+
+    def run_graph(self, images, outputs, image_metas=None):
+        """Runs a sub-set of the computation graph that computes the given
+        outputs.
+        image_metas: If provided, the images are assumed to be already
+            molded (i.e. resized, padded, and normalized)
+        outputs: List of tuples (name, tensor) to compute. The tensors are
+            symbolic TensorFlow tensors and the names are for easy tracking.
+        Returns an ordered dict of results. Keys are the names received in the
+        input and values are Numpy arrays.
+        """
+        model = self.keras_model
+
+        # Organize desired outputs into an ordered dict
+        outputs = OrderedDict(outputs)
+        for o in outputs.values():
+            assert o is not None
+
+        # Build a Keras function to run parts of the computation graph
+        inputs = model.inputs
+        if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+            inputs += [K.learning_phase()]
+        kf = K.function(model.inputs, list(outputs.values()))
+
+        # Prepare inputs
+        if image_metas is None: 
+            molded_images, image_metas, _ = self.mold_inputs(images)
+        else:
+            molded_images = images
+        image_shape = molded_images[0].shape
+        # Anchors
+        anchors = self.get_anchors(image_shape)
+        # Duplicate across the batch dimension because Keras requires it
+        # TODO: can this be optimized to avoid duplicating the anchors?
+        anchors = np.broadcast_to(anchors, (self.config.BATCH_SIZE,) + anchors.shape)
+        model_in = [molded_images, image_metas, anchors]
+
+        # Run inference
+        if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+            model_in.append(0.)
+        outputs_np = kf(model_in)
+
+        # Pack the generated Numpy arrays into a a dict and log the results.
+        outputs_np = OrderedDict([(k, v)
+                                for k, v in zip(outputs.keys(), outputs_np)])
+        for k, v in outputs_np.items():
+            KerasRFCN.Utils.log(k, v)
+        return outputs_np
+
+    def get_anchors(self, image_shape):
+        """Returns anchor pyramid for the given image size."""
+        return self.anchors

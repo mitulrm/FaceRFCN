@@ -711,3 +711,30 @@ class GradientsCallback(Callback):
         with open('gradients.txt','w') as f:
             f.write('grads')
 '''
+
+def log(text, array=None):
+    """Prints a text message. And, optionally, if a Numpy array is provided it
+    prints it's shape, min, and max values.
+    """
+    if array is not None:
+        text = text.ljust(25)
+        text += ("shape: {:20}  ".format(str(array.shape)))
+        if array.size:
+            text += ("min: {:10.5f}  max: {:10.5f}".format(array.min(),array.max()))
+        else:
+            text += ("min: {:10}  max: {:10}".format("",""))
+        text += "  {}".format(array.dtype)
+    print(text)
+
+def denorm_boxes(boxes, shape):
+        """Converts boxes from normalized coordinates to pixel coordinates.
+        boxes: [N, (y1, x1, y2, x2)] in normalized coordinates
+        shape: [..., (height, width)] in pixels
+        Note: In pixel coordinates (y2, x2) is outside the box. But in normalized
+        coordinates it's inside the box.
+        Returns:[N, (y1, x1, y2, x2)] in pixel coordinates
+        """
+        h, w = shape
+        scale = np.array([h - 1, w - 1, h - 1, w - 1])
+        shift = np.array([0, 0, 1, 1])
+        return np.around(np.multiply(boxes, scale) + shift).astype(np.int32)
