@@ -287,7 +287,7 @@ class BaseModel(object):
         # multiprocessing workers. See discussion here:
         # https://github.com/matterport/Mask_RCNN/issues/13#issuecomment-353124009
         if os.name is 'nt':
-            workers = 1
+            workers = 0
         else:
             workers = max(self.config.BATCH_SIZE // 2, 2)
         print("Workers: {}".format(workers))
@@ -445,8 +445,8 @@ class BaseModel(object):
         if isinstance(name, str):
             name = re.compile(name.replace("/", r"(\_\d+)*/"))
 
-         parents = tensor.op.inputs
-         for p in parents:
+        parents = tensor.op.inputs
+        for p in parents:
             if p in checked:
                 continue
             if bool(re.fullmatch(name, p.name)):
@@ -482,7 +482,7 @@ class BaseModel(object):
         kf = K.function(model.inputs, list(outputs.values()))
 
         # Prepare inputs
-        if image_metas is None: 
+        if image_metas is None:
             molded_images, image_metas, _ = self.mold_inputs(images)
         else:
             molded_images = images

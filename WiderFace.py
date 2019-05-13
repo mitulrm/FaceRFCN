@@ -3,11 +3,11 @@ import numpy as np
 import re
 import cv2
 
+from PIL import Image
 from KerasRFCN.Model.Model import RFCN_Model
 from KerasRFCN.Config import Config
 from KerasRFCN.Utils import Dataset, generate_pyramid_anchors
 from KerasRFCN.Data_generator import load_image_gt, build_rpn_targets
-# from IPython import embed
 
 ############################################################
 #  Config
@@ -47,7 +47,7 @@ class RFCNNConfig(Config):
     BACKBONE_STRIDES = [4, 8, 16, 32, 64]
     # Reduce training ROIs per image because the images are small and have
     # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
-    TRAIN_ROIS_PER_IMAGE = 128
+    TRAIN_ROIS_PER_IMAGE = 256
 
     # Use a small epoch since the data is simple
     STEPS_PER_EPOCH = 6000
@@ -57,12 +57,15 @@ class RFCNNConfig(Config):
 
     RPN_NMS_THRESHOLD = 0.7
     POOL_SIZE = 7
-    MAX_GT_INSTANCES = 100
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 128
+    MAX_GT_INSTANCES = 200
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 800
+    # RPN_TRAIN_ANCHORS_PER_IMAGE = 256
 
     # To decide to run online hard example mining(OHEM) or not
-    OHEM = False
-    OHEM_HARD_EXAMPLES_SIZE = 256
+    OHEM = True
+    OHEM_HARD_EXAMPLES_SIZE = 128
+
+    DATASET_LOCATION = "D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset"
 ############################################################
 #  Dataset
 ############################################################
@@ -82,8 +85,6 @@ class WiderFaceDataset(Dataset):
 
         with open(annotation_file, "r") as fp:
             for line in fp:
-                #if countImg == 100:
-                #    break
                 line = line.strip()
                 if regex.search(line):
                     if countImg != -1:
@@ -109,7 +110,7 @@ class WiderFaceDataset(Dataset):
     # read image from file and get the
     def load_image(self, image_id):
         info = self.image_info[image_id]
-        img = cv2.imread(info['path'])
+        img = np.array(Image.open(info['path']))
         return img
 
     def get_keys(self, d, value):
@@ -122,6 +123,8 @@ class WiderFaceDataset(Dataset):
         for item in info['bboxes']:
             bboxes.append((item['y1'], item['x1'], item['y2'], item['x2']))
             class_id = self.get_keys(self.classes, item['class'])
+            if len(class_id) == 0:
+                continue
             class_ids.extend(class_id)
         return np.array(bboxes), np.asarray(class_ids)
 
@@ -190,36 +193,36 @@ def show_anchors(dataset, config, image_id=0):
 if __name__ == '__main__':
     ROOT_DIR = os.getcwd()
     config = RFCNNConfig()
+    print("Preparing training dataset...")
     dataset_train = WiderFaceDataset()
-    dataset_train.initDB(img_dir='/home/mitulmodi15/WIDERFACE_Dataset/WIDER_train/images',
-                         annotation_file='/home/mitulmodi15/WIDERFACE_Dataset/wider_face_split/wider_face_train_bbx_gt.txt')
+    dataset_train.initDB(
+        img_dir=os.path.join(config.DATASET_LOCATION, 'train/images'),
+        annotation_file=os.path.join(config.DATASET_LOCATION, 'wider_face_split/wider_face_train_bbx_gt.txt'))
     dataset_train.prepare()
+    print("Training dataset prepared!")
 
+    print("Preparing validation dataset...")
     dataset_val = WiderFaceDataset()
-    dataset_val.initDB(img_dir='/home/mitulmodi15/WIDERFACE_Dataset/WIDER_val/images',
-                       annotation_file='/home/mitulmodi15/WIDERFACE_Dataset/wider_face_split/wider_face_val_bbx_gt.txt')
+    dataset_val.initDB(
+        img_dir=os.path.join(config.DATASET_LOCATION, 'val/WIDER_val/images'),
+        annotation_file=os.path.join(config.DATASET_LOCATION, 'wider_face_split/wider_face_val_bbx_gt.txt'))
     dataset_val.prepare()
-    print("Dataset prepared!")
-    #anchors = generate_pyramid_anchors(config.RPN_ANCHOR_SCALES,
-    #                                   config.RPN_ANCHOR_RATIOS,
-    #                                   config.BACKBONE_SHAPES,
-    #                                   config.BACKBONE_STRIDES,
-    #                                   config.RPN_ANCHOR_STRIDE)
-    #image, image_meta, gt_class_ids, gt_boxes = load_image_gt(dataset_train, config, 10, augment=False)
-    #rpn_match, rpn_bbox = build_rpn_targets(image.shape, anchors, gt_class_ids, gt_boxes, config)
-    #embed()
+    print("Validation dataset prepared!")
+
     model = RFCN_Model(mode="training", config=config, model_dir=os.path.join(ROOT_DIR, "logs"))
+    model.keras_model.summary()
     model.keras_model.load_weights("resnet101_weights_tf_dim_ordering_tf_kernels_notop.h5",
                                    by_name=True, skip_mismatch=True)
 
     try:
         model_path = model.find_last()[1]
+        print("Saved model found at: {}".format(model_path))
         if model_path is not None:
             model.load_weights(model_path, by_name=True)
     except Exception as e:
         print(e)
         print("No checkpoint founded")
 
-    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=40, layers='heads')
-    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=30, layers='3+')
-    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')
+    # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=40, layers='heads')
+    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=30, layers='4+')
+    # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')

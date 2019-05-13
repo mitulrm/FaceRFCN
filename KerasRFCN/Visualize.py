@@ -96,7 +96,7 @@ def display_instances(image, boxes, masks, class_ids, class_names,
     colors: (optional) An array or colors to use with each object
     captions: (optional) A list of strings to use as captions for each object
     """
-    # Number of instances    
+    # Number of instances
     N = boxes.shape[0]
     if not N:
         print("\n*** No instances to display *** \n")

@@ -146,16 +146,15 @@ class RFCN_Model(BaseModel):
             rois, target_class_ids, target_bbox =\
                 DetectionTargetLayer(config, name="proposal_targets")([
                     rpn_rois, input_gt_class_ids, gt_boxes])
-
             # size = [batch, num_rois, class_num]
             v_classify_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, config.C, config.K, config.POOL_SIZE,
                                           config.BATCH_SIZE, config.IMAGE_SHAPE,
                                           name="classify_vote")([rois] + ScoreMaps_classify)
             d_classify_vote = KL.TimeDistributed(
-                KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'classify_weighted_dense'))(v_classify_vote)
+                KL.Dense(config.K * config.K, name='classify_weighted_avg_dense'))(v_classify_vote)
             classify_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, config.C,
-                                            config.POOL_SIZE,
                                             name="classify_weighted_vote")(d_classify_vote)
+
             # Shape of classify_output: (config.TRAIN_ROIS_PER_IMAGE, channels) -> (200, 2)
             classify_output = KL.TimeDistributed(KL.Activation('softmax'),
                                                  name="classify_output")(classify_vote)
@@ -164,10 +163,11 @@ class RFCN_Model(BaseModel):
             v_regr_vote = VotePooling(config.TRAIN_ROIS_PER_IMAGE, 4, config.K, config.POOL_SIZE,
                                       config.BATCH_SIZE, config.IMAGE_SHAPE,
                                       name="regr_vote")([rois] + ScoreMaps_regr)
-            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'regr_weighted_dense'))(v_regr_vote)
+            d_regr_vote = KL.TimeDistributed(KL.Dense(config.K * config.K,
+                                                      name='regr_weighted_avg_dense'))(v_regr_vote)
             regr_vote = WeightedAverage(config.TRAIN_ROIS_PER_IMAGE, 4,
-                                        config.POOL_SIZE,
                                         name="regr_weighted_regr")(d_regr_vote)
+
             regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)
 
             rpn_class_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_class_loss_graph(*x),
@@ -211,20 +211,24 @@ class RFCN_Model(BaseModel):
             v_classify_vote = VotePooling(proposal_count, config.C, config.K, config.POOL_SIZE,
                                           config.BATCH_SIZE, config.IMAGE_SHAPE,
                                           name="classify_vote")([rpn_rois] + ScoreMaps_classify)
+
             d_classify_vote = KL.TimeDistributed(
-                KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'classify_weighted_dense'))(v_classify_vote)
+                KL.Dense(config.K * config.K, name='classify_weighted_avg_dense'))(v_classify_vote)
+
             classify_vote = WeightedAverage(proposal_count, config.C,
-                                            config.POOL_SIZE,
                                             name="classify_weighted_vote")(d_classify_vote)
+
+            # Shape of classify_output: (config.TRAIN_ROIS_PER_IMAGE, channels) -> (200, 2)
             classify_output = KL.TimeDistributed(KL.Activation('softmax'),
                                                  name="classify_output")(classify_vote)
 
             # 4 k^2 rather than 4k^2*C
-            v_regr_vote = VotePooling(proposal_count, 4, config.K, config.POOL_SIZE, config.BATCH_SIZE,
-                                      config.IMAGE_SHAPE, name="regr_vote")([rpn_rois] + ScoreMaps_regr)
-            d_regr_vote = KL.TimeDistributed(KL.Dense(config.POOL_SIZE * config.POOL_SIZE, name = 'regr_weighted_dense'))(v_regr_vote)
+            v_regr_vote = VotePooling(proposal_count, 4, config.K, config.POOL_SIZE,
+                                      config.BATCH_SIZE, config.IMAGE_SHAPE,
+                                      name="regr_vote")([rpn_rois] + ScoreMaps_regr)
+            d_regr_vote = KL.TimeDistributed(KL.Dense(config.K * config.K,
+                                                      name='regr_weighted_avg_dense'))(v_regr_vote)
             regr_vote = WeightedAverage(proposal_count, 4,
-                                        config.POOL_SIZE,
                                         name="regr_weighted_regr")(d_regr_vote)
             regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)
 
@@ -634,23 +638,13 @@ def log2_graph(x):
 
 class WeightedAverage(KE.Layer):
 
-    def __init__(self, num_rois, channel_num, pool_shape, **kwargs):
+    def __init__(self, num_rois, channel_num, **kwargs):
         super(WeightedAverage, self).__init__(**kwargs)
         self.num_rois = num_rois
-        self.pool_shape = pool_shape
         self.channel_num = channel_num
 
     def call(self, inputs):
-        feature = inputs[0]
-        pool = []
-        # feature = tf.squeeze(feature, 0)
-        for ix in range(self.num_rois):
-            total = tf.reduce_sum(feature[ix], -1)
-            avg = total / (self.pool_shape * self.pool_shape)
-            pool.append(avg)
-        pool = tf.convert_to_tensor(pool, tf.float32)
-        pool = tf.expand_dims(pool, 0)
-        return pool
+        return tf.reduce_mean(inputs, axis=[-1], keep_dims=False)
 
     def compute_output_shape(self, input_shape):
         return None, self.num_rois, self.channel_num
@@ -717,6 +711,7 @@ class VotePooling(KE.Layer):
 
         # position-sensitive ROI pooling + classify
         score_map_bins = []
+
         for channel_step in range(self.k * self.k):
             bin_x = K.variable(int(channel_step % self.k) * self.pool_shape, dtype='int32')
             bin_y = K.variable(int(channel_step / self.k) * self.pool_shape, dtype='int32')
@@ -725,13 +720,11 @@ class VotePooling(KE.Layer):
             croped = tf.image.crop_to_bounding_box(
                 tf.gather(pooled, indices=channel_indices, axis=-1),
                 bin_y, bin_x, self.pool_shape, self.pool_shape)
-            # croped_mean = croped
-            croped_mean = tf.reshape(croped, [-1, self.pool_shape * self.pool_shape, self.channel_num])
             # [pool_shape, pool_shape, channel_num] ==> [1,1,channel_num] ==> [1, channel_num]
-            # croped_mean = K.pool2d(croped, (self.pool_shape, self.pool_shape), strides=(1, 1),
-            #                        padding='valid', data_format="channels_last", pool_mode='avg')
+            croped_mean = K.pool2d(croped, (self.pool_shape, self.pool_shape), strides=(1, 1),
+                                   padding='valid', data_format="channels_last", pool_mode='avg')
             # [batch * num_rois, 1,1,channel_num] ==> [batch * num_rois, 1, channel_num]
-            # croped_mean = K.squeeze(croped_mean, axis=1)
+            croped_mean = K.squeeze(croped_mean, axis=1)
             score_map_bins.append(croped_mean)
         # [batch * num_rois, k^2, channel_num]
         score_map_bins = tf.concat(score_map_bins, axis=1)
@@ -758,11 +751,11 @@ class VotePooling(KE.Layer):
 
         # Re-add the batch dimension
         pooled = tf.expand_dims(pooled, 0)
-
+        pooled = tf.transpose(pooled, [0, 1, 3, 2])
         return pooled
 
     def compute_output_shape(self, input_shape):
-        return None, self.num_rois, self.channel_num, self.pool_shape * self.pool_shape
+        return None, self.num_rois, self.channel_num, self.k * self.k
 
 ############################################################
 #  Detection Layer
