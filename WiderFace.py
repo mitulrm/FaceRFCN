@@ -103,7 +103,7 @@ class WiderFaceDataset(Dataset):
                 else:
                     info = list(map(lambda x: int(x), line.split(" ")))
                     x, y, width, height = info[:4]
-                    if width > 0 and height > 0:
+                    if width > 0 and height > 0 and len(imageBoxes) < 500:
                         imageBoxes.append({'x1': x, 'y1': y, 'x2': x + width,
                                            'y2': y + height, 'class': 'face'})
 
@@ -224,5 +224,5 @@ if __name__ == '__main__':
         print("No checkpoint founded")
 
     # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=40, layers='heads')
-    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=30, layers='4+')
+    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='4+')
     # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')
