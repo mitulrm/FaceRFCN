@@ -39,7 +39,7 @@ class RFCNNConfig(Config):
     IMAGE_MIN_DIM = 768
     IMAGE_MAX_DIM = 1024
 
-    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
+    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5, 2]
     # Use smaller anchors because our image and objects are small
     RPN_ANCHOR_SCALES = (32, 64, 128, 256, 512)  # anchor side in pixels
     # Use same strides on stage 4-6 if use dilated resnet of DetNet
