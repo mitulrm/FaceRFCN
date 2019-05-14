@@ -39,31 +39,30 @@ class RFCNNConfig(Config):
     IMAGE_MIN_DIM = 768
     IMAGE_MAX_DIM = 1024
 
-    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5, 2]
+    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
     # Use smaller anchors because our image and objects are small
-    RPN_ANCHOR_SCALES = (32, 64, 128, 256, 512)  # anchor side in pixels
+    RPN_ANCHOR_SCALES = ([16, 32], 64, 128, 256, 512)  # anchor side in pixels
     # Use same strides on stage 4-6 if use dilated resnet of DetNet
     # Like BACKBONE_STRIDES = [4, 8, 16, 16, 16]
     BACKBONE_STRIDES = [4, 8, 16, 32, 64]
     # Reduce training ROIs per image because the images are small and have
     # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
-    TRAIN_ROIS_PER_IMAGE = 256
+    TRAIN_ROIS_PER_IMAGE = 800
 
     # Use a small epoch since the data is simple
     STEPS_PER_EPOCH = 6000
 
     # use small validation steps since the epoch is small
-    VALIDATION_STEPS = 1000
+    VALIDATION_STEPS = 3200
 
-    RPN_NMS_THRESHOLD = 0.7
+    RPN_NMS_THRESHOLD = 0.6
     POOL_SIZE = 7
-    MAX_GT_INSTANCES = 200
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 800
-    # RPN_TRAIN_ANCHORS_PER_IMAGE = 256
-
+    MAX_GT_INSTANCES = 500
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 256
+    LEARNING_RATE = 0.001
     # To decide to run online hard example mining(OHEM) or not
     OHEM = True
-    OHEM_HARD_EXAMPLES_SIZE = 128
+    OHEM_HARD_EXAMPLES_SIZE = 150
 
     DATASET_LOCATION = "D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset"
 ############################################################
