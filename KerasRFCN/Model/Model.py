@@ -169,7 +169,7 @@ class RFCN_Model(BaseModel):
                                         name="regr_weighted_regr")(d_regr_vote)
 
             regr_output = KL.TimeDistributed(KL.Activation('linear'), name="regr_output")(regr_vote)
-
+            
             rpn_class_loss = KL.Lambda(lambda x: KerasRFCN.Losses.rpn_class_loss_graph(*x),
                                        name="rpn_class_loss")(
                 [input_rpn_match, rpn_class_logits])
@@ -177,16 +177,17 @@ class RFCN_Model(BaseModel):
                                       name="rpn_bbox_loss")(
                 [input_rpn_bbox, input_rpn_match, rpn_bbox])
 
+            
             if config.OHEM:
                 print("Using OHEM Loss")
                 class_loss, hard_example_indices = KL.Lambda(
-                    lambda x: KerasRFCN.Losses.mrcnn_class_ohem_loss_graph(*x),
-                    name="mrcnn_class_loss")([target_class_ids, classify_vote, active_class_ids])
-
+                    lambda x, OHEM_HARD_EXAMPLES_SIZE: KerasRFCN.Losses.mrcnn_class_ohem_loss_graph(*x, OHEM_HARD_EXAMPLES_SIZE), 
+                    name = "mrcnn_class_loss", 
+                    arguments = {'OHEM_HARD_EXAMPLES_SIZE' : config.OHEM_HARD_EXAMPLES_SIZE})([target_class_ids, classify_vote, active_class_ids])
                 bbox_loss = KL.Lambda(
-                    lambda x: KerasRFCN.Losses.mrcnn_bbox_ohem_loss_graph(*x),
-                    name="mrcnn_bbox_loss")([target_bbox, target_class_ids,
-                                             regr_output, hard_example_indices])
+                    lambda x, BATCH_SIZE, OHEM_HARD_EXAMPLES_SIZE: KerasRFCN.Losses.mrcnn_bbox_ohem_loss_graph(*x, BATCH_SIZE, OHEM_HARD_EXAMPLES_SIZE),
+                    name="mrcnn_bbox_loss", 
+                    arguments = {'BATCH_SIZE' : config.BATCH_SIZE, 'OHEM_HARD_EXAMPLES_SIZE' : config.OHEM_HARD_EXAMPLES_SIZE} )([target_bbox, target_class_ids, regr_output, hard_example_indices])
             else:
                 print("NOT using OHEM Loss")
                 class_loss = KL.Lambda(
@@ -287,7 +288,6 @@ class RFCN_Model(BaseModel):
         # Anchor Score. [batch, height, width, anchors per location * 2].
         x = KL.Conv2D(2 * anchors_per_location, (1, 1), padding='valid',
                       activation='linear', name='rpn_class_raw')(shared)
-
         # Reshape to [batch, anchors, 2]
         rpn_class_logits = KL.Lambda(
             lambda t: tf.reshape(t, [tf.shape(t)[0], -1, 2]))(x)

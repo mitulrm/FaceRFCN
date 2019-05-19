@@ -248,7 +248,7 @@ class BaseModel(object):
         # Pre-defined layer regular expressions
         layer_regex = {
             # all layers but the backbone
-            "rpn": r"(res5.*)|(bn5.*)|(res6.*)|(bn6.*)|(rpn\_.*)",
+            "rpn": r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(res6.*)|(bn6.*)|(rpn\_.*)",
             "heads": r"(mrcnn\_.*)|(rpn\_.*)|(score_map\_.*)|(regr\_.*)|(classify\_.*)",
             # From a specific Resnet stage and up
             "3+": r"(res3.*)|(bn3.*)|(res4.*)|(bn4.*)|(res5.*)|(bn5.*)|(res6.*)|(bn6.*)|(mrcnn\_.*)|(rpn\_.*)|(score_map\_.*)|(regr\_.*)|(classify\_.*)",
@@ -509,3 +509,24 @@ class BaseModel(object):
     def get_anchors(self, image_shape):
         """Returns anchor pyramid for the given image size."""
         return self.anchors
+
+    def find_trainable_layer(self, layer):
+        """If a layer is encapsulated by another layer, this function
+           digs through the encapsulation and returns the layer that holds
+           the weights.
+        """
+        if layer.__class__.__name__ == 'TimeDistributed':
+            return self.find_trainable_layer(layer.layer)
+        return layer
+
+    def get_trainable_layers(self):
+        """Returns a list of layers that have weights."""
+        layers = []
+        # Loop through all layers
+        for l in self.keras_model.layers:
+            # If layer is a wrapper, find inner trainable layer
+            l = self.find_trainable_layer(l)
+            # Include layer if it has weights
+            if l.get_weights():
+                layers.append(l)
+        return layers

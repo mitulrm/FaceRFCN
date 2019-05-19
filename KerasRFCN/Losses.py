@@ -21,7 +21,6 @@ def smooth_l1_loss(y_true, y_pred):
     loss = (less_than_one * 0.5 * diff**2) + (1 - less_than_one) * (diff - 0.5)
     return loss
 
-
 def rpn_class_loss_graph(rpn_match, rpn_class_logits):
     """RPN anchor classifier loss.
 
@@ -29,6 +28,7 @@ def rpn_class_loss_graph(rpn_match, rpn_class_logits):
                -1=negative, 0=neutral anchor.
     rpn_class_logits: [batch, anchors, 2]. RPN classifier logits for FG/BG.
     """
+
     # Squeeze last dim to simplify
     rpn_match = tf.squeeze(rpn_match, -1)
     # Get anchor classes. Convert the -1/+1 match to 0/1 values.
@@ -90,6 +90,7 @@ def mrcnn_class_loss_graph(target_class_ids, pred_class_logits,
         classes that are in the dataset of the image, and 0
         for classes that are not in the dataset.
     """
+
     target_class_ids = tf.cast(target_class_ids, 'int64')
 
     # Find predictions of classes that are not in the dataset.
@@ -142,7 +143,6 @@ def mrcnn_bbox_loss_graph(target_bbox, target_class_ids, pred_bbox):
     loss = K.reshape(loss, [1, 1])
     return loss
 
-
 def mrcnn_class_ohem_loss_graph(target_class_ids, pred_class_logits,
                                 active_class_ids, OHEM_HARD_EXAMPLES_SIZE=256):
     """Loss for the classifier head of Mask RCNN.
@@ -183,7 +183,6 @@ def mrcnn_class_ohem_loss_graph(target_class_ids, pred_class_logits,
     loss = tf.reduce_sum(loss) / tf.reduce_sum(pred_active * hard_examples_mask)
     return [loss, hard_examples_indices]
 
-
 def mrcnn_bbox_ohem_loss_graph(target_bbox, target_class_ids, pred_bbox, hard_examples_indices,
                                BATCH_SIZE=1, OHEM_HARD_EXAMPLES_SIZE=256):
     """Loss for Mask R-CNN bounding box refinement.
@@ -192,9 +191,10 @@ def mrcnn_bbox_ohem_loss_graph(target_bbox, target_class_ids, pred_bbox, hard_ex
     target_class_ids: [batch, num_rois]. Integer class IDs.
     pred_bbox: [batch, num_rois, num_classes, (dy, dx, log(dh), log(dw))]
     """
-    i, _ = tf.meshgrid(tf.range(BATCH_SIZE), tf.range(OHEM_HARD_EXAMPLES_SIZE), indexing='ij')
+
+    i, _ = tf.meshgrid(tf.range(BATCH_SIZE), tf.range(OHEM_HARD_EXAMPLES_SIZE), indexing = 'ij')
     hard_examples_indices = tf.cast(hard_examples_indices, tf.int32)
-    hard_examples_indices = tf.stack([i, hard_examples_indices], axis=-1)
+    hard_examples_indices = tf.stack([i, hard_examples_indices], axis = -1)
     target_bbox = tf.gather_nd(target_bbox, hard_examples_indices)
     target_class_ids = tf.gather_nd(target_class_ids, hard_examples_indices)
     pred_bbox = tf.gather_nd(pred_bbox, hard_examples_indices)
@@ -218,10 +218,10 @@ def mrcnn_bbox_ohem_loss_graph(target_bbox, target_class_ids, pred_bbox, hard_ex
     loss = K.switch(tf.size(target_bbox) > 0,
                     smooth_l1_loss(y_true=target_bbox, y_pred=pred_bbox),
                     tf.constant(0.0))
+
     loss = K.mean(loss)
     loss = K.reshape(loss, [1, 1])
     return loss
-
 
 def batch_pack_graph(x, counts, num_rows):
     """Picks different number of values from each row

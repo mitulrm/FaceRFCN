@@ -8,6 +8,7 @@ from KerasRFCN.Model.Model import RFCN_Model
 from KerasRFCN.Config import Config
 from KerasRFCN.Utils import Dataset, generate_pyramid_anchors
 from KerasRFCN.Data_generator import load_image_gt, build_rpn_targets
+from IPython import embed
 
 ############################################################
 #  Config
@@ -39,31 +40,35 @@ class RFCNNConfig(Config):
     IMAGE_MIN_DIM = 768
     IMAGE_MAX_DIM = 1024
 
-    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5, 2]
+    RPN_ANCHOR_RATIOS = [0.5, 1, 1.5]
     # Use smaller anchors because our image and objects are small
-    RPN_ANCHOR_SCALES = (32, 64, 128, 256, 512)  # anchor side in pixels
+    RPN_ANCHOR_SCALES = (16, 64, 128, 256, 512)  # anchor side in pixels
     # Use same strides on stage 4-6 if use dilated resnet of DetNet
     # Like BACKBONE_STRIDES = [4, 8, 16, 16, 16]
     BACKBONE_STRIDES = [4, 8, 16, 32, 64]
     # Reduce training ROIs per image because the images are small and have
     # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
-    TRAIN_ROIS_PER_IMAGE = 256
+    TRAIN_ROIS_PER_IMAGE = 1000
 
     # Use a small epoch since the data is simple
     STEPS_PER_EPOCH = 6000
 
     # use small validation steps since the epoch is small
-    VALIDATION_STEPS = 1000
+    VALIDATION_STEPS = 3000
 
-    RPN_NMS_THRESHOLD = 0.7
+    RPN_NMS_THRESHOLD = 0.6
     POOL_SIZE = 7
     MAX_GT_INSTANCES = 200
-    RPN_TRAIN_ANCHORS_PER_IMAGE = 800
-    # RPN_TRAIN_ANCHORS_PER_IMAGE = 256
+    RPN_TRAIN_ANCHORS_PER_IMAGE = 256
+
+    DETECTION_MIN_CONFIDENCE = 0.8
+
+    LEARNING_RATE = 0.0001
+    WEIGHT_DECAY = 0.0005
 
     # To decide to run online hard example mining(OHEM) or not
     OHEM = True
-    OHEM_HARD_EXAMPLES_SIZE = 128
+    OHEM_HARD_EXAMPLES_SIZE = 256
 
     DATASET_LOCATION = "D:/Courses/Spring 2019/Biometrics and Image Analysis/Face R-FCN/WIDERFACE_Dataset"
 ############################################################
@@ -103,7 +108,7 @@ class WiderFaceDataset(Dataset):
                 else:
                     info = list(map(lambda x: int(x), line.split(" ")))
                     x, y, width, height = info[:4]
-                    if width > 0 and height > 0 and len(imageBoxes) < 500:
+                    if width > 0 and height > 0:
                         imageBoxes.append({'x1': x, 'y1': y, 'x2': x + width,
                                            'y2': y + height, 'class': 'face'})
 
@@ -194,26 +199,23 @@ if __name__ == '__main__':
     ROOT_DIR = os.getcwd()
     config = RFCNNConfig()
     print("Preparing training dataset...")
+
     dataset_train = WiderFaceDataset()
     dataset_train.initDB(
         img_dir=os.path.join(config.DATASET_LOCATION, 'train/images'),
         annotation_file=os.path.join(config.DATASET_LOCATION, 'wider_face_split/wider_face_train_bbx_gt.txt'))
-    dataset_train.prepare()
-    print("Training dataset prepared!")
 
-    print("Preparing validation dataset...")
+    dataset_train.prepare()
+
     dataset_val = WiderFaceDataset()
     dataset_val.initDB(
         img_dir=os.path.join(config.DATASET_LOCATION, 'val/WIDER_val/images'),
         annotation_file=os.path.join(config.DATASET_LOCATION, 'wider_face_split/wider_face_val_bbx_gt.txt'))
+
     dataset_val.prepare()
-    print("Validation dataset prepared!")
-
+    print("Dataset prepared!")
     model = RFCN_Model(mode="training", config=config, model_dir=os.path.join(ROOT_DIR, "logs"))
-    model.keras_model.summary()
-    model.keras_model.load_weights("resnet101_weights_tf_dim_ordering_tf_kernels_notop.h5",
-                                   by_name=True, skip_mismatch=True)
-
+    model.keras_model.load_weights("resnet101_weights_tf_dim_ordering_tf_kernels_notop.h5",by_name=True, skip_mismatch=True)    
     try:
         model_path = model.find_last()[1]
         print("Saved model found at: {}".format(model_path))
@@ -223,6 +225,6 @@ if __name__ == '__main__':
         print(e)
         print("No checkpoint founded")
 
-    # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=40, layers='heads')
-    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='4+')
-    # model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')
+    model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=92, layers='3+')
+    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=20, layers='4+')
+    #model.train(dataset_train, dataset_val, learning_rate=config.LEARNING_RATE, epochs=100, layers='all')
